@@ -88,13 +88,13 @@ class Actor:
         states = layers.Input(shape=(self.state_size,), name='states')
 
         # Add hidden layers
-        net = layers.Dense(units=200, kernel_regularizer=regularizers.l2(0.01))(states)
+        net = layers.Dense(units=100, kernel_regularizer=regularizers.l2(0.01))(states)
         net = layers.Activation('relu')(net)
-        net = layers.Dense(units=400, kernel_regularizer=regularizers.l2(0.01))(net) #use_bias=False
+        net = layers.Dense(units=200, kernel_regularizer=regularizers.l2(0.01))(net) #use_bias=False
         #net = layers.BatchNormalization()(net) #following suggestion from Lillicrap et el (2016)
         net = layers.Activation('relu')(net)
         #net = layers.Dropout(0.5)(net)
-        net = layers.Dense(units=200, kernel_regularizer=regularizers.l2(0.01))(net) #use_bias=False
+        net = layers.Dense(units=100, kernel_regularizer=regularizers.l2(0.01))(net) #use_bias=False
         #net = layers.BatchNormalization()(net)
         net = layers.Activation('relu')(net)
         #net = layers.Dropout(0.5)(net)
@@ -152,7 +152,7 @@ class Critic:
         actions = layers.Input(shape=(self.action_size,), name='actions')
 
         # Add hidden layer(s) for state pathway
-        net_states = layers.Dense(units=200, kernel_regularizer=regularizers.l2(0.01))(states) #, use_bias=False
+        net_states = layers.Dense(units=100, kernel_regularizer=regularizers.l2(0.01))(states) #, use_bias=False
         #net_states = layers.BatchNormalization()(net_states)
         net_states = layers.Activation('relu')(net_states)
         #net_states = layers.Dropout(0.5)(net_states)
@@ -163,7 +163,7 @@ class Critic:
         #net_states = layers.Dropout(0.8)(net_states)
         
         # Add hidden layer(s) for action pathway
-        net_actions = layers.Dense(units=200, kernel_regularizer=regularizers.l2(0.01))(actions) #use_bias=False
+        net_actions = layers.Dense(units=100, kernel_regularizer=regularizers.l2(0.01))(actions) #use_bias=False
         #net_actions = layers.BatchNormalization()(net_actions)
         net_actions = layers.Activation('relu')(net_actions)
         #net_actions = layers.Dropout(0.5)(net_actions)
@@ -181,12 +181,12 @@ class Critic:
 
         # Add more layers to the combined network if needed
 
-        net = layers.Dense(units=400, kernel_regularizer=regularizers.l2(0.01))(net) #use_bias=False
-        #net = layers.BatchNormalization()(net)
-        net = layers.Activation('relu')(net)
         net = layers.Dense(units=200, kernel_regularizer=regularizers.l2(0.01))(net) #use_bias=False
         #net = layers.BatchNormalization()(net)
         net = layers.Activation('relu')(net)
+        #net = layers.Dense(units=100, kernel_regularizer=regularizers.l2(0.01))(net) #use_bias=False
+        #net = layers.BatchNormalization()(net)
+        #net = layers.Activation('relu')(net)
         #net = layers.Dropout(0.5)(net)
         
 
@@ -237,8 +237,8 @@ class DDPG():
         self.noise = OUNoise(self.action_size, self.exploration_mu, self.exploration_theta, self.exploration_sigma)
 
         # Replay memory
-        self.buffer_size = 1000000
-        self.batch_size =512
+        self.buffer_size = 100000
+        self.batch_size =256
         self.memory = ReplayBuffer(self.buffer_size, self.batch_size)
 
         # Algorithm parameters

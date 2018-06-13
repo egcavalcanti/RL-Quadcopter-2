@@ -56,7 +56,7 @@ class OUNoise:
 
 
 #Actor class from project instructions
-from keras import layers, models, optimizers, regularizers
+from keras import layers, models, optimizers, regularizers, initializers
 from keras import backend as K
 
 class Actor:
@@ -88,13 +88,15 @@ class Actor:
         states = layers.Input(shape=(self.state_size,), name='states')
 
         # Add hidden layers
-        net = layers.Dense(units=200, kernel_regularizer=regularizers.l2(0.01))(states)
-        net = layers.Activation('relu')(net)
-        net = layers.Dense(units=400, kernel_regularizer=regularizers.l2(0.01))(net) #use_bias=False
+        net = layers.Dense(units=100, kernel_regularizer=regularizers.l2(0.01))(states)
         #net = layers.BatchNormalization()(net) #following suggestion from Lillicrap et el (2016)
         net = layers.Activation('relu')(net)
         #net = layers.Dropout(0.5)(net)
         net = layers.Dense(units=200, kernel_regularizer=regularizers.l2(0.01))(net) #use_bias=False
+        #net = layers.BatchNormalization()(net)
+        #net = layers.Activation('relu')(net)
+        net = layers.Dropout(0.5)(net)
+        net = layers.Dense(units=100, kernel_regularizer=regularizers.l2(0.01))(net) #use_bias=False
         #net = layers.BatchNormalization()(net)
         net = layers.Activation('relu')(net)
         #net = layers.Dropout(0.5)(net)
@@ -103,6 +105,8 @@ class Actor:
         # Try different layer sizes, activations, add batch normalization, regularizers, etc.
 
         # Add final output layer with sigmoid activation
+        #w_init = initializers.RandomUniform(minval=-0.003, maxval=0.003, seed=None)
+        #raw_actions = layers.Dense(units=self.action_size, activation='tanh', kernel_regularizer=regularizers.l2(0.01), kernel_initializer=w_init, name='raw_actions')(net) #use_bias=False
         raw_actions = layers.Dense(units=self.action_size, activation='tanh', kernel_regularizer=regularizers.l2(0.01), name='raw_actions')(net) #use_bias=False
 
         # Scale [0, 1] output for each action dimension to proper range
@@ -152,7 +156,7 @@ class Critic:
         actions = layers.Input(shape=(self.action_size,), name='actions')
 
         # Add hidden layer(s) for state pathway
-        net_states = layers.Dense(units=200, kernel_regularizer=regularizers.l2(0.01))(states) #, use_bias=False
+        net_states = layers.Dense(units=100, kernel_regularizer=regularizers.l2(0.01))(states) #, use_bias=False
         #net_states = layers.BatchNormalization()(net_states)
         net_states = layers.Activation('relu')(net_states)
         #net_states = layers.Dropout(0.5)(net_states)
@@ -163,7 +167,7 @@ class Critic:
         #net_states = layers.Dropout(0.8)(net_states)
         
         # Add hidden layer(s) for action pathway
-        net_actions = layers.Dense(units=200, kernel_regularizer=regularizers.l2(0.01))(actions) #use_bias=False
+        net_actions = layers.Dense(units=100, kernel_regularizer=regularizers.l2(0.01))(actions) #use_bias=False
         #net_actions = layers.BatchNormalization()(net_actions)
         net_actions = layers.Activation('relu')(net_actions)
         #net_actions = layers.Dropout(0.5)(net_actions)
@@ -181,16 +185,19 @@ class Critic:
 
         # Add more layers to the combined network if needed
 
-        net = layers.Dense(units=400, kernel_regularizer=regularizers.l2(0.01))(net) #use_bias=False
+        net = layers.Dense(units=200, kernel_regularizer=regularizers.l2(0.01))(net) #use_bias=False
         #net = layers.BatchNormalization()(net)
         net = layers.Activation('relu')(net)
-        net = layers.Dense(units=200, kernel_regularizer=regularizers.l2(0.01))(net) #use_bias=False
+        #net = layers.Dropout(0.5)(net)
+        net = layers.Dense(units=100, kernel_regularizer=regularizers.l2(0.01))(net) #use_bias=False
         #net = layers.BatchNormalization()(net)
         net = layers.Activation('relu')(net)
         #net = layers.Dropout(0.5)(net)
         
 
         # Add final output layer to prduce action values (Q values)
+        #w_init = initializers.RandomUniform(minval=-0.003, maxval=0.003, seed=None)
+        #Q_values = layers.Dense(units=1, kernel_regularizer=regularizers.l2(0.01), kernel_initializer=w_init, name='q_values')(net)
         Q_values = layers.Dense(units=1, kernel_regularizer=regularizers.l2(0.01), name='q_values')(net)
 
         # Create Keras model
@@ -211,12 +218,13 @@ class Critic:
 #DDPG agent from project instructions
 class DDPG():
     """Reinforcement Learning agent that learns using DDPG."""
-    def __init__(self, task):
+    def __init__(self, task, state_trail):
         self.task = task
-        self.state_size = task.state_size
-        self.action_size = task.action_size
-        self.action_low = task.action_low
-        self.action_high = task.action_high
+        self.state_trail = state_trail
+        self.state_size = self.task.state_size * self.state_trail
+        self.action_size = self.task.action_size
+        self.action_low = self.task.action_low
+        self.action_high = self.task.action_high
 
         # Actor (Policy) Model
         self.actor_local = Actor(self.state_size, self.action_size, self.action_low, self.action_high)
@@ -247,7 +255,9 @@ class DDPG():
 
     def reset_episode(self):
         self.noise.reset()
-        state = self.task.reset()
+        state = []
+        reset_state = self.task.reset()
+        state = np.concatenate([reset_state] * self.state_trail) 
         self.last_state = state
         return state
 

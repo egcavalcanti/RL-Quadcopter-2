@@ -196,7 +196,7 @@ class MountainCarContinuousTask():
         # Simulation
         self.env = gym.envs.make("MountainCarContinuous-v0")
 
-        self.action_repeat = 3
+        self.action_repeat = 1
 
         self.state_size = self.action_repeat * 2
         self.action_low = self.env.action_space.low[0] #0
@@ -221,6 +221,6 @@ class MountainCarContinuousTask():
 
     def reset(self):
         """Reset the sim to start a new episode."""
-        reset_state = self.env.reset()
-        state = np.concatenate([reset_state] * self.action_repeat) 
+        state = self.env.reset()
+        #state = np.concatenate([reset_state] * self.action_repeat) 
         return state
