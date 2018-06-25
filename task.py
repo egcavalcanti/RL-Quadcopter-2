@@ -2,12 +2,9 @@ import numpy as np
 from physics_sim import PhysicsSim
 import math
 import gym
+import gym.spaces
+import gym.envs
 
-def sigmoid(x):
-    return 1 / (1 + math.exp(-x)) #to be used in reward functions
-
-def barrier(x):
-    return sigmoid(-10*(x))
 
 class SampleTask():
     """Task (environment) that defines the goal and provides feedback to the agent."""
@@ -57,9 +54,9 @@ class SampleTask():
         return state
 
 
-class HoverTask():
+class TakeOffTask():
     """Task (environment) that defines the goal and provides feedback to the agent."""
-    def __init__(self, init_pose=np.array([0., 0., 10.,0.,0.,0.]), init_velocities=None, 
+    def __init__(self, init_pose=np.array([0., 0., 0.,0.,0.,0.]), init_velocities=None, 
         init_angle_velocities=None, runtime=5., target_pos=None):#np.array([0., 0., 10.,0.,0.,0.])):
         """Initialize a Task object.
         Params
@@ -74,126 +71,103 @@ class HoverTask():
         self.sim = PhysicsSim(init_pose, init_velocities, init_angle_velocities, runtime) 
         self.action_repeat = 3
 
-        #TODO: remove 6 to simplify state size to have only vertical?
-        self.state_size = self.action_repeat * 12
-        self.action_low = 200 #0
-        self.action_high = 700 #900
+        self.state_size = self.action_repeat * 1 # z position only
+        
+        self.rotor_low = 404 - 404  # 404 is the rotor speed to keep the quadcopter hovering
+        self.rotor_high = 404 + 404
+        self.rotor_range = self.rotor_high - self.rotor_low
+
+        self.action_low = - 1 # Rescaled actions to pass to the agent
+        self.action_high = 1
+        self.action_range = self.action_high - self.action_low
+        
         self.action_size = 1
 
         # Goal
-        self.target_pos = target_pos if target_pos is not None else np.array([0., 0., 10.])#,0.,0.,0.])
+        self.target_pos = target_pos if target_pos is not None else np.array([0., 0., 100.])#,0.,0.,0.])
 
-    def get_reward(self):
+        self.viewer = None #for rendering
+
+    def get_reward(self, done):
         """Uses current pose of sim to return reward."""
-        max_height = self.sim.upper_bounds[2]
-        target_dist = np.linalg.norm(self.sim.pose[:3] - self.target_pos)
-        accel = np.linalg.norm(self.sim.linear_accel)
-        speed = np.linalg.norm(self.sim.v)
-        reward = - np.log10((0.2 * np.sum(np.abs(self.sim.pose[:3] - self.target_pos))) + 1.0)
-        reward = np.clip(reward, -1.0, 1.0)
-        #reward = 1 - 2* (target_dist / 100) - 0.001 * speed
-        #if self.sim.pose[2] - self.target_pos[2] > 10:
-        #    if self.sim.linear_accel[2] < 0:
-        #        reward += 2
-        #    else:
-        #        reward -= 2
-        #if self.sim.pose[2] - self.target_pos[2] < -10:
-        #    if self.sim.linear_accel[2] > 0:
-        #        reward += 2
-        #    else:
-        #        reward -= 2 
-        #if reward < -10:
-        #    reward = -10
-        return reward
+        target_dist = self.sim.pose[2] - self.target_pos[2]
+        reward = 0
+        if done:
+            if self.sim.time < self.sim.runtime: 
+                reward -= 100.0
+            else:
+                reward += 100 - np.abs(target_dist)
+        return reward, done       
 
     def step(self, rotor_speed):
         """Uses action to obtain next state, reward, done."""
+        reward_step = 0
         reward = 0
         state_all = []
-        rotor_speeds = [rotor_speed[0]*i for i in [1.,1.,1.,1.]]
+        done_flag = 0
+
+        rotor_speeds = [(rotor_speed)*i for i in [1.,1.,1.,1.]]
         for _ in range(self.action_repeat):
             done = self.sim.next_timestep(rotor_speeds) # update the sim pose and velocities with all rotors at same speed
-            reward += self.get_reward() 
-            state_all.append(self.sim.pose)
-            state_all.append(self.sim.linear_accel)
-            state_all.append(self.sim.angular_accels)
-        next_state = np.concatenate(state_all)
+            done_flag += done
+            if done_flag <2: # to allow counting the first reward after done only
+                reward_step, done = self.get_reward(done)
+                reward += reward_step
+            state_all.append(self.sim.pose[2])
+        next_state = state_all
         return next_state, reward, done
 
     def reset(self):
         """Reset the sim to start a new episode."""
         self.sim.reset()
-        state = np.concatenate((self.sim.pose, self.sim.linear_accel, self.sim.angular_accels))
+        state = [self.sim.pose[2]]
         state = np.concatenate([state] * self.action_repeat)
         return state
+   
+    def render(self, mode='human'):
+        screen_width = 600
+        screen_height = 600
 
+        world_width = 300
+        world_height = 300
+        scale_z = screen_height/world_height
+        scale_x = screen_width/world_width
+        coptwidth = 30.0 * scale_x
+        coptheight = 5.0 * scale_z
 
-class TakeoffTask():
-    """Task (environment) that defines the goal and provides feedback to the agent."""
-    def __init__(self, init_pose=np.array([0., 0., 2.,0.,0.,0.]), init_velocities=None, 
-        init_angle_velocities=None, runtime=5., target_pos=None):#np.array([0., 0., 10.,0.,0.,0.])):
-        """Initialize a Task object.
-        Params
-        ======
-            init_pose: initial position of the quadcopter in (x,y,z) dimensions and the Euler angles
-            init_velocities: initial velocity of the quadcopter in (x,y,z) dimensions
-            init_angle_velocities: initial radians/second for each of the three Euler angles
-            runtime: time limit for each episode
-            target_pos: target/goal (x,y,z) position for the agent
-        """
-        # Simulation
-        self.sim = PhysicsSim(init_pose, init_velocities, init_angle_velocities, runtime) 
-        self.action_repeat = 3
+        if self.viewer is None:
+            from gym.envs.classic_control import rendering
+            self.viewer = rendering.Viewer(screen_width, screen_height)
+            l,r,t,b = -coptwidth/2, coptwidth/2, coptheight/2, -coptheight/2
+            cart = rendering.FilledPolygon([(l,b), (l,t), (r,t), (r,b)])
+            self.carttrans = rendering.Transform()
+            cart.add_attr(self.carttrans)
+            self.viewer.add_geom(cart)
+            l,r,t,b = 0, screen_width, (self.target_pos[2] * scale_z) + 1, (self.target_pos[2] * scale_z)
+            target = rendering.FilledPolygon([(l,b), (l,t), (r,t), (r,b)])
+            target.set_color(.8,.2,.2)
+            self.viewer.add_geom(target)
+            
+        if self.sim.pose[2] is None: return None
 
-        #TODO: remove 6 to simplify state size to have only vertical?
-        self.state_size = self.action_repeat * 6
-        self.action_low = 0
-        self.action_high = 900
-        self.action_size = 1
+        x = self.sim.pose
+        coptx = x[0] + screen_width/2.0 # MIDDLE OF COPTER
+        coptz = x[2] * scale_z
+        self.carttrans.set_translation(coptx, coptz)
+        #self.poletrans.set_rotation(-x[2])
 
-        # Goal
-        self.target_pos = target_pos if target_pos is not None else np.array([0., 0., 10.])#,0.,0.,0.])
+        return self.viewer.render(return_rgb_array = mode=='rgb_array')
 
-    def get_reward(self):
-        """Uses current pose of sim to return reward."""
-        max_height = self.sim.upper_bounds[2]
-        target_dist = np.linalg.norm(self.sim.pose[:3] - self.target_pos)
-        accel = np.linalg.norm(self.sim.linear_accel)
-        z_vel = self.sim.v[2]
-        reward = z_vel
-        return reward
+    def close(self):
+        if self.viewer: self.viewer.close()
 
-    def step(self, rotor_speed):
-        """Uses action to obtain next state, reward, done."""
-        reward = 0
-        pose_all = []
-        rotor_speeds = [rotor_speed[0]*i for i in [1.,1.,1.,1.]]
-        for _ in range(self.action_repeat):
-            done = self.sim.next_timestep(rotor_speeds) # update the sim pose and velocities with all rotors at same speed
-            reward += self.get_reward() 
-            pose_all.append(self.sim.pose)
-        next_state = np.concatenate(pose_all)
-        return next_state, reward, done
-
-    def reset(self):
-        """Reset the sim to start a new episode."""
-        self.sim.reset()
-        state = np.concatenate([self.sim.pose] * self.action_repeat) 
-        return state
 
 class MountainCarContinuousTask():
     """Task (environment) that defines the goal and provides feedback to the agent."""
-    def __init__(self):#np.array([0., 0., 10.,0.,0.,0.])):
-        """Initialize a Task object.
-        Params
-        ======
-            init_pose: initial position of the quadcopter in (x,y,z) dimensions and the Euler angles
-            init_velocities: initial velocity of the quadcopter in (x,y,z) dimensions
-            init_angle_velocities: initial radians/second for each of the three Euler angles
-            runtime: time limit for each episode
-            target_pos: target/goal (x,y,z) position for the agent
-        """
-        # Simulation
+    def __init__(self):
+        """Initialize a Task object.  """
+
+        # Environment
         self.env = gym.envs.make("MountainCarContinuous-v0")
 
         self.action_repeat = 3
